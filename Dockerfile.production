@@ -74,5 +74,5 @@ RUN mkdir -p /tmp/repos
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "from redis import Redis; import os; Redis.from_url(os.getenv('REDIS_URL')).ping()" || exit 1
 
-# Run RQ worker directly from .venv
-CMD ["/app/.venv/bin/rq", "worker", "agent-tasks", "--url", "$REDIS_URL", "--name", "$HOSTNAME", "--with-scheduler"]
+# Run RQ worker (using shell form for env var interpolation)
+CMD ["/bin/sh", "-c", "echo 'REDIS_URL from env: '${REDIS_URL} && echo 'HOSTNAME: '${HOSTNAME} && python -m rq worker agent-tasks --url ${REDIS_URL} --name ${HOSTNAME} --with-scheduler"]
