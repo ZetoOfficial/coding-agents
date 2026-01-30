@@ -131,8 +131,8 @@ class OpenAIClient:
                     f"tokens: ~{count_tokens(prompt)}"
                 )
 
-                # Use OpenAI's structured output feature (beta)
-                completion = self.client.beta.chat.completions.parse(
+                # Use OpenAI's structured output feature
+                completion = self.client.chat.completions.parse(
                     model=self.model,
                     messages=[
                         {

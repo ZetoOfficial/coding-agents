@@ -189,7 +189,8 @@ class CodeModifier:
         repo_path_obj = Path(repo_path).resolve()
 
         # Check files to modify
-        for file_path in generated_code.files_to_modify.keys():
+        files_to_modify = generated_code.files_to_modify or {}
+        for file_path in files_to_modify.keys():
             full_path = (repo_path_obj / file_path).resolve()
 
             # Security check: ensure file is within repository
@@ -206,7 +207,8 @@ class CodeModifier:
                 errors.append(f"File to modify does not exist: {file_path}")
 
         # Check files to create
-        for file_path in generated_code.files_to_create.keys():
+        files_to_create = generated_code.files_to_create or {}
+        for file_path in files_to_create.keys():
             full_path = (repo_path_obj / file_path).resolve()
 
             # Security check: ensure file is within repository

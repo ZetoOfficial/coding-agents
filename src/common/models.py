@@ -76,14 +76,14 @@ class CodeGeneration(BaseModel):
     """Structured output for LLM code generation."""
 
     explanation: str = Field(description="What changes are being made and why")
-    files_to_modify: Dict[str, str] = Field(
-        default_factory=dict, description="Mapping of file paths to new content"
+    files_to_modify: Optional[Dict[str, str]] = Field(
+        default=None, description="Mapping of file paths to new content"
     )
-    files_to_create: Dict[str, str] = Field(
-        default_factory=dict, description="Mapping of new file paths to content"
+    files_to_create: Optional[Dict[str, str]] = Field(
+        default=None, description="Mapping of new file paths to content"
     )
-    dependencies_needed: List[str] = Field(
-        default_factory=list, description="New dependencies to add"
+    dependencies_needed: Optional[List[str]] = Field(
+        default=None, description="New dependencies to add"
     )
 
 

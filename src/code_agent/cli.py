@@ -219,7 +219,10 @@ def process_issue(
             )
             progress.update(task, completed=True)
 
-        total_changes = len(code_gen.files_to_modify) + len(code_gen.files_to_create)
+        files_to_modify = code_gen.files_to_modify or {}
+        files_to_create = code_gen.files_to_create or {}
+
+        total_changes = len(files_to_modify) + len(files_to_create)
         print_success(f"Generated changes for {total_changes} files")
         logger.info(f"Code generation: {code_gen.explanation[:100]}...")
 
@@ -235,7 +238,7 @@ def process_issue(
             sys.exit(1)
 
         # Combine all changes for validation and application
-        all_changes = {**code_gen.files_to_modify, **code_gen.files_to_create}
+        all_changes = {**files_to_modify, **files_to_create}
 
         # Validate syntax and security
         validation_warnings = []
@@ -348,8 +351,8 @@ def process_issue(
 {code_gen.explanation}
 
 ### Changes Made
-- Modified: {len(code_gen.files_to_modify)} file(s)
-- Created: {len(code_gen.files_to_create)} file(s)
+- Modified: {len(files_to_modify)} file(s)
+- Created: {len(files_to_create)} file(s)
 
 ### Requirements Addressed
 {chr(10).join(f'- {req}' for req in analysis.requirements)}
@@ -566,11 +569,14 @@ def apply_feedback(
             )
             progress.update(task, completed=True)
 
-        total_changes = len(code_gen.files_to_modify) + len(code_gen.files_to_create)
+        files_to_modify = code_gen.files_to_modify or {}
+        files_to_create = code_gen.files_to_create or {}
+
+        total_changes = len(files_to_modify) + len(files_to_create)
         print_success(f"Generated fixes for {total_changes} files")
 
         # Step 4: Validate and apply changes
-        all_changes = {**code_gen.files_to_modify, **code_gen.files_to_create}
+        all_changes = {**files_to_modify, **files_to_create}
 
         print_info("Validating changes...")
         for file_path, content in all_changes.items():
