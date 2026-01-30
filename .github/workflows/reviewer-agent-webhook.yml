@@ -1,0 +1,160 @@
+name: CI and Webhook Trigger (for webhook server)
+
+# This workflow is for use when you have a webhook server deployed.
+# It runs CI checks in GitHub Actions and triggers the webhook server for AI review.
+# To use this instead of reviewer-agent.yml:
+# 1. Rename reviewer-agent.yml to reviewer-agent.yml.disabled
+# 2. Rename this file to reviewer-agent.yml
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, master]
+
+jobs:
+  # Job 1: Quality checks (lint, type, format)
+  quality-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --group dev
+
+      - name: Run ruff (linting)
+        id: ruff
+        run: |
+          mkdir -p ci-reports
+          uv run ruff check src/ --output-format=json > ci-reports/ruff-report.json || true
+          uv run ruff check src/ --output-format=github || true
+        continue-on-error: true
+
+      - name: Run black (formatting check)
+        id: black
+        run: |
+          uv run black --check --diff src/ | tee ci-reports/black-report.txt || true
+        continue-on-error: true
+
+      - name: Run mypy (type checking)
+        id: mypy
+        run: |
+          uv run mypy src/ --no-error-summary > ci-reports/mypy-report.json || true
+        continue-on-error: true
+
+      - name: Upload quality reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: ci-reports/
+
+  # Job 2: Tests and security
+  test-and-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --group dev
+
+      - name: Run pytest
+        id: pytest
+        run: |
+          mkdir -p ci-reports
+          uv run pytest tests/ -v \
+            --cov=src \
+            --cov-report=json:ci-reports/coverage.json \
+            --cov-report=term \
+            --json-report --json-report-file=ci-reports/pytest-report.json || true
+        continue-on-error: true
+
+      - name: Run bandit (security)
+        id: bandit
+        run: |
+          uv run bandit -r src/ -f json -o ci-reports/bandit-report.json || true
+        continue-on-error: true
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        id: pip-audit
+        run: |
+          uv run pip-audit --format=json --output=ci-reports/pip-audit-report.json || true
+        continue-on-error: true
+
+      - name: Upload test and security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-security-reports
+          path: ci-reports/
+
+  # Job 3: Trigger webhook for AI review
+  trigger-ai-review:
+    needs: [quality-checks, test-and-security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    # Only run on PRs from same repo (not forks)
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Trigger webhook for AI review
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_SERVER_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          # Calculate signature
+          payload="{\"pr_number\": ${{ github.event.pull_request.number }}, \"repository\": \"${{ github.repository }}\", \"artifacts_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+
+          signature="sha256=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | cut -d' ' -f2)"
+
+          # Trigger webhook
+          curl -X POST "$WEBHOOK_URL/webhooks/ci-complete" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $signature" \
+            -d "$payload" \
+            --fail-with-body \
+            --max-time 30 || {
+              echo "Failed to trigger webhook"
+              exit 1
+            }
+
+          echo "AI review webhook triggered successfully"
+
+      - name: Write to GitHub Step Summary
+        if: always()
+        run: |
+          echo "## CI Checks Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "CI checks have completed. AI review is processing on the webhook server." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifacts:** [View CI Reports](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The AI reviewer will post results to this PR shortly." >> $GITHUB_STEP_SUMMARY

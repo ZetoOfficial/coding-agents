@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: coding-agents-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: web
+    image: ghcr.io/zetoofficial/coding-agents-web:latest
+    container_name: coding-agents-web
+    env_file: .env.production
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - agent-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: worker
+    image: ghcr.io/zetoofficial/coding-agents-worker:latest
+    env_file: .env.production
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    deploy:
+      replicas: 2
+    depends_on:
+      - redis
+    volumes:
+      - worker-repos:/tmp/repos
+    restart: unless-stopped
+    networks:
+      - agent-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  rq-dashboard:
+    image: eoranged/rq-dashboard:latest
+    container_name: coding-agents-rq-dashboard
+    environment:
+      - RQ_DASHBOARD_REDIS_URL=redis://redis:6379/0
+    ports:
+      - "9181:9181"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - agent-network
+
+volumes:
+  redis-data:
+    driver: local
+  worker-repos:
+    driver: local
+
+networks:
+  agent-network:
+    driver: bridge

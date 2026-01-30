@@ -36,8 +36,24 @@ class AgentConfig(BaseSettings):
     )
 
     # GitHub Configuration
-    github_token: SecretStr = Field(description="GitHub personal access token")
+    github_token: Optional[SecretStr] = Field(
+        default=None, description="GitHub personal access token (for Actions)"
+    )
     github_repository: str = Field(description="Repository in format owner/repo")
+
+    # GitHub App Configuration (for webhook server)
+    github_app_id: Optional[str] = Field(
+        default=None, description="GitHub App ID"
+    )
+    github_app_private_key: Optional[SecretStr] = Field(
+        default=None, description="GitHub App private key (PEM format)"
+    )
+    github_app_installation_id: Optional[int] = Field(
+        default=None, description="GitHub App installation ID"
+    )
+    webhook_secret: Optional[SecretStr] = Field(
+        default=None, description="GitHub webhook secret for signature verification"
+    )
 
     # LLM Provider Configuration
     llm_provider: Literal["openai", "yandex"] = Field(
@@ -93,6 +109,11 @@ class AgentConfig(BaseSettings):
         default=5000, description="Max GitHub API requests per hour", ge=100
     )
 
+    # Redis Configuration (for task queue and state)
+    redis_url: Optional[str] = Field(
+        default=None, description="Redis connection URL"
+    )
+
     @field_validator("llm_provider", mode="after")
     @classmethod
     def validate_llm_provider(cls, v: str) -> str:
@@ -108,6 +129,20 @@ class AgentConfig(BaseSettings):
             raise ValueError("openai_api_key is required when llm_provider is 'openai'")
         if self.llm_provider == "yandex" and not self.yandex_api_key:
             raise ValueError("yandex_api_key is required when llm_provider is 'yandex'")
+
+        # Validate GitHub authentication (either PAT or App credentials)
+        has_pat = self.github_token is not None
+        has_app_auth = all([
+            self.github_app_id,
+            self.github_app_private_key,
+            self.github_app_installation_id
+        ])
+        if not (has_pat or has_app_auth):
+            raise ValueError(
+                "Either github_token (PAT) or GitHub App credentials "
+                "(app_id + private_key + installation_id) must be provided"
+            )
+
         return self
 
     @field_validator("github_repository")
@@ -123,15 +158,30 @@ class AgentConfig(BaseSettings):
     def __repr__(self) -> str:
         """Prevent secrets from being printed."""
         return (
-            f"AgentConfig(github_token=***, "
+            f"AgentConfig(github_token={'***' if self.github_token else None}, "
+            f"github_app_id={self.github_app_id or None}, "
             f"openai_api_key={'***' if self.openai_api_key else None}, "
             f"yandex_api_key={'***' if self.yandex_api_key else None}, "
             f"llm_provider={self.llm_provider})"
         )
 
-    def get_github_token(self) -> str:
+    def get_github_token(self) -> Optional[str]:
         """Get GitHub token as plain string."""
-        return self.github_token.get_secret_value()
+        if self.github_token:
+            return self.github_token.get_secret_value()
+        return None
+
+    def get_github_app_private_key(self) -> Optional[str]:
+        """Get GitHub App private key as plain string."""
+        if self.github_app_private_key:
+            return self.github_app_private_key.get_secret_value()
+        return None
+
+    def get_webhook_secret(self) -> Optional[str]:
+        """Get webhook secret as plain string."""
+        if self.webhook_secret:
+            return self.webhook_secret.get_secret_value()
+        return None
 
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key as plain string."""
@@ -144,6 +194,14 @@ class AgentConfig(BaseSettings):
         if self.yandex_api_key:
             return self.yandex_api_key.get_secret_value()
         return None
+
+    def is_using_github_app(self) -> bool:
+        """Check if using GitHub App authentication instead of PAT."""
+        return all([
+            self.github_app_id,
+            self.github_app_private_key,
+            self.github_app_installation_id
+        ])
 
 
 def setup_logging(config: AgentConfig) -> None:
