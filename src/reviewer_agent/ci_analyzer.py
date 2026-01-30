@@ -205,7 +205,16 @@ def _parse_ruff(artifact_path: Path) -> Dict[str, Any]:
 
     try:
         with open(ruff_file, "r") as f:
-            data = json.load(f)
+            content = f.read()
+
+        # Skip non-JSON lines from uv output (Building, Uninstalled, etc.)
+        # Find the first '[' which marks the beginning of JSON array
+        json_start = content.find('[')
+        if json_start == -1:
+            logger.debug("No JSON array found in ruff report")
+            return {"status": "unknown", "error_count": 0, "errors": []}
+
+        data = json.loads(content[json_start:])
 
         # Ruff outputs a list of violations
         errors = []
@@ -338,14 +347,15 @@ def _parse_pip_audit(artifact_path: Path) -> Dict[str, Any]:
             data = json.load(f)
 
         vulnerabilities = []
-        for package_name, package_data in data.get("dependencies", {}).items():
-            for vuln in package_data:
+        for package in data.get("dependencies", []):
+            package_name = package.get("name", "unknown")
+            for vuln in package.get("vulns", []):
                 vulnerabilities.append({
                     "package": package_name,
                     "id": vuln.get("id", "unknown"),
                     "severity": vuln.get("severity", "MEDIUM"),
                     "description": vuln.get("description", ""),
-                    "fixed_version": vuln.get("fixed_version", ""),
+                    "fixed_version": ", ".join(vuln.get("fix_versions", [])),
                 })
 
         status = "failure" if vulnerabilities else "success"

@@ -335,6 +335,10 @@ def _create_comment_for_lint(lint_error: Dict[str, Any], diff_data: Dict[str, An
 
     position = find_diff_position(diff_data, file_path, line)
 
+    # Only create comment if the file is part of the PR diff
+    if position is None:
+        return None
+
     message = (
         f"**Linting Error ({lint_error.get('code', 'unknown')})**\n\n"
         f"{lint_error.get('message', 'Linting issue detected')}\n\n"
@@ -360,6 +364,10 @@ def _create_comment_for_type(type_error: Dict[str, Any], diff_data: Dict[str, An
 
     position = find_diff_position(diff_data, file_path, line)
 
+    # Only create comment if the file is part of the PR diff
+    if position is None:
+        return None
+
     message = (
         f"**Type Error**\n\n"
         f"{type_error.get('message', 'Type checking issue detected')}\n\n"
@@ -384,6 +392,10 @@ def _create_comment_for_security(security_issue: Dict[str, Any], diff_data: Dict
         return None
 
     position = find_diff_position(diff_data, file_path, line)
+
+    # Only create comment if the file is part of the PR diff
+    if position is None:
+        return None
 
     severity_level = security_issue.get("severity", "MEDIUM")
     severity_map = {"HIGH": "blocking", "MEDIUM": "non-blocking", "LOW": "suggestion"}
@@ -416,6 +428,10 @@ def _create_comment_for_test(test_failure: Dict[str, Any], diff_data: Dict[str, 
         return None
 
     position = find_diff_position(diff_data, file_path, line)
+
+    # Only create comment if the file is part of the PR diff
+    if position is None:
+        return None
 
     message = (
         f"**Test Failure**\n\n"
