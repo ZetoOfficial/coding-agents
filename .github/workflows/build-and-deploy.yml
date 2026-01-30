@@ -94,14 +94,28 @@ jobs:
             set -e
             cd /opt/coding-agents
 
+            # Check Docker Compose v2 availability
+            if ! docker compose version &> /dev/null; then
+              echo "ERROR: Docker Compose v2 is not available!"
+              echo "Please install docker-compose-plugin:"
+              echo "  sudo apt-get update"
+              echo "  sudo apt-get install docker-compose-plugin"
+              exit 1
+            fi
+
+            echo "Using Docker Compose: $(docker compose version)"
+
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Pull latest images
-            docker-compose pull web worker
+            # Stop and remove old containers to avoid migration issues
+            docker compose down || true
 
-            # Restart services with zero downtime
-            docker-compose up -d --no-deps --remove-orphans web worker
+            # Pull latest images
+            docker compose pull web worker
+
+            # Start services
+            docker compose up -d --remove-orphans web worker
 
             # Wait for services to be healthy
             echo "Waiting for services to start..."
@@ -110,7 +124,7 @@ jobs:
             # Check web service health
             if ! curl -f http://localhost:8000/health; then
               echo "Health check failed!"
-              docker-compose logs web
+              docker compose logs web
               exit 1
             fi
 
