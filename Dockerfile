@@ -22,8 +22,7 @@ RUN git config --global user.name "github-actions[bot]" && \
     git config --global --add safe.directory /app
 
 # Install uv (pinned version for reproducibility)
-RUN curl -LsSf https://astral.sh/uv/0.1.12/install.sh | sh && \
-    ln -s /root/.cargo/bin/uv /usr/local/bin/uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && ln -s /root/.cargo/bin/uv /usr/local/bin/uv
 
 # Copy dependency files
 COPY pyproject.toml ./

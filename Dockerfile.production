@@ -17,9 +17,8 @@ RUN apt-get update && apt-get install -y \
 RUN git config --global user.name "github-actions[bot]" && \
     git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-# Install uv package manager (latest version)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    ln -s /root/.cargo/bin/uv /usr/local/bin/uv
+# Install uv package manager via pip (more reliable for Docker)
+RUN pip install --no-cache-dir uv
 
 # ========== Builder Stage ==========
 FROM base AS builder
