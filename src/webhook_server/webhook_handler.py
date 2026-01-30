@@ -125,8 +125,8 @@ class WebhookHandler:
 
 async def get_webhook_payload(
     request: Request,
-    x_hub_signature_256: Optional[str] = Header(None),
-    x_github_event: Optional[str] = Header(None)
+    x_hub_signature_256: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
+    x_github_event: Optional[str] = Header(None, alias="X-GitHub-Event")
 ) -> tuple[str, Dict[str, Any], bytes]:
     """Extract and verify webhook payload from request.
 
