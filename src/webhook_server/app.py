@@ -198,8 +198,8 @@ async def ci_complete_webhook(payload: CICompletePayload) -> WebhookResponse:
         if not installation_id:
             raise ValueError("Installation ID not configured")
 
-        # Convert config to dict for serialization
-        config_dict = config.model_dump(mode="json")
+        # Convert config to dict for serialization (with secrets exposed)
+        config_dict = config.to_dict_with_secrets()
 
         # Enqueue review task
         queue = Queue("agent-tasks", connection=redis_conn)

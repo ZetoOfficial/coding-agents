@@ -241,6 +241,32 @@ class AgentConfig(BaseSettings):
             self.github_app_installation_id
         ])
 
+    def to_dict_with_secrets(self) -> dict:
+        """Serialize config with secrets exposed for internal use (RQ tasks).
+
+        WARNING: This method exports all secrets as plain strings.
+        Only use for internal task queuing where secrets need to be transmitted.
+
+        Returns:
+            Dictionary with all config values including exposed secrets
+        """
+        # First get the base dict with masked secrets
+        config_dict = self.model_dump(mode="json")
+
+        # Manually export all SecretStr fields as plain strings
+        if self.github_token:
+            config_dict["github_token"] = self.get_github_token()
+        if self.github_app_private_key:
+            config_dict["github_app_private_key"] = self.get_github_app_private_key()
+        if self.webhook_secret:
+            config_dict["webhook_secret"] = self.get_webhook_secret()
+        if self.openai_api_key:
+            config_dict["openai_api_key"] = self.get_openai_api_key()
+        if self.yandex_api_key:
+            config_dict["yandex_api_key"] = self.get_yandex_api_key()
+
+        return config_dict
+
 
 def setup_logging(config: AgentConfig) -> None:
     """Configure logging with secret filtering."""

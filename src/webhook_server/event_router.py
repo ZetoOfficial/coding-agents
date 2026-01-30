@@ -230,8 +230,8 @@ class EventRouter:
                 message="Missing installation ID"
             )
 
-        # Convert config to dict for serialization
-        config_dict = self.config.model_dump(mode="json")
+        # Convert config to dict for serialization (with secrets exposed)
+        config_dict = self.config.to_dict_with_secrets()
 
         # Debug logging for serialized private key
         private_key = config_dict.get("github_app_private_key")
@@ -293,8 +293,8 @@ class EventRouter:
                 message="Missing installation ID"
             )
 
-        # Convert config to dict for serialization
-        config_dict = self.config.model_dump(mode="json")
+        # Convert config to dict for serialization (with secrets exposed)
+        config_dict = self.config.to_dict_with_secrets()
 
         # Debug logging for serialized private key
         private_key = config_dict.get("github_app_private_key")

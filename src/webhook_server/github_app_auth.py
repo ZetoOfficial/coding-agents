@@ -49,6 +49,9 @@ class GitHubAppAuth:
     def generate_jwt(self) -> str:
         """Generate GitHub App JWT token (valid 10 minutes).
 
+        Note: This method is primarily for testing/debugging.
+        In production, PyGithub's GithubIntegration handles JWT generation automatically.
+
         Returns:
             JWT token string
         """
@@ -79,10 +82,8 @@ class GitHubAppAuth:
                 logger.debug("Using cached installation token")
                 return self._token
 
-        # Generate new JWT and get installation token
-        jwt_token = self.generate_jwt()
-
         # Use PyGithub's GithubIntegration to get installation token
+        # Note: GithubIntegration handles JWT generation internally
         integration = GithubIntegration(self.app_id, self.private_key)
         auth = integration.get_access_token(self.installation_id)
 
