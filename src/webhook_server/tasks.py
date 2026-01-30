@@ -249,6 +249,15 @@ def _build_config_from_dict(
             f"has_literal_backslash_n={has_literal}, "
             f"has_real_newline={has_real}"
         )
+
+        # CRITICAL FIX: Normalize private key after JSON deserialization
+        # When data passes through RQ/Redis JSON serialization, real newlines (\n)
+        # become escaped (\\n in JSON), which become literal two-character "\n" in Python
+        # after deserialization. We need to convert them back to real newlines.
+        if has_literal and not has_real:
+            logger.debug("Converting literal \\n to real newlines after JSON deserialization")
+            config_dict["github_app_private_key"] = private_key.replace(literal_newline, "\n")
+            logger.debug(f"After conversion: has_real_newline={chr(10) in config_dict['github_app_private_key']}")
     else:
         logger.debug("_build_config_from_dict: private_key is None or missing")
 
