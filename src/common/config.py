@@ -159,11 +159,32 @@ class AgentConfig(BaseSettings):
     @classmethod
     def validate_github_app_private_key(cls, v: Optional[str]) -> Optional[str]:
         """Normalize GitHub App private key - replace literal \\n with actual newlines."""
+        logger = logging.getLogger(__name__)
+
         if v is None:
+            logger.debug("Private key validator: value is None")
             return v
+
+        # Log input value details
+        logger.debug(
+            f"Private key validator input: type={type(v).__name__}, "
+            f"length={len(v) if isinstance(v, str) else 'N/A'}, "
+            f"has_literal_backslash_n={'\\n' in v if isinstance(v, str) else False}, "
+            f"has_real_newline={chr(10) in v if isinstance(v, str) else False}, "
+            f"starts_with={repr(v[:50]) if isinstance(v, str) and len(v) > 50 else repr(v[:20]) if isinstance(v, str) else 'N/A'}"
+        )
+
         # If the key contains literal \n (as two characters), replace with actual newlines
         if isinstance(v, str) and "\\n" in v:
+            logger.debug("Converting literal \\n to actual newlines")
             v = v.replace("\\n", "\n")
+            logger.debug(
+                f"After conversion: has_real_newline={chr(10) in v}, "
+                f"starts_with={repr(v[:50])}"
+            )
+        else:
+            logger.debug("No conversion needed (no literal \\n found)")
+
         return v
 
     def __repr__(self) -> str:

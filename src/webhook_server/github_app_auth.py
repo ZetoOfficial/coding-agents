@@ -32,6 +32,17 @@ class GitHubAppAuth:
         if not all([self.app_id, self.private_key, self.installation_id]):
             raise ValueError("Missing GitHub App credentials")
 
+        # Debug logging for private key
+        if self.private_key:
+            key_preview = self.private_key[:80].replace("\n", "\\n")
+            logger.debug(
+                f"GitHubAppAuth initialized: app_id={self.app_id}, "
+                f"installation_id={self.installation_id}, "
+                f"key_length={len(self.private_key)}, "
+                f"key_has_newlines={chr(10) in self.private_key}, "
+                f"key_starts_with={repr(key_preview)}"
+            )
+
         self._token: Optional[str] = None
         self._token_expires_at: Optional[datetime] = None
 

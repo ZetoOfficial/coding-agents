@@ -233,6 +233,16 @@ class EventRouter:
         # Convert config to dict for serialization
         config_dict = self.config.model_dump(mode="json")
 
+        # Debug logging for serialized private key
+        private_key = config_dict.get("github_app_private_key")
+        if private_key:
+            logger.debug(
+                f"Serialized config: private_key type={type(private_key).__name__}, "
+                f"length={len(private_key) if isinstance(private_key, str) else 'N/A'}, "
+                f"has_literal_backslash_n={'\\n' in private_key if isinstance(private_key, str) else False}, "
+                f"has_real_newline={chr(10) in private_key if isinstance(private_key, str) else False}"
+            )
+
         # Enqueue task
         job = self.queue.enqueue(
             "src.webhook_server.tasks.process_issue_task",
@@ -282,6 +292,16 @@ class EventRouter:
 
         # Convert config to dict for serialization
         config_dict = self.config.model_dump(mode="json")
+
+        # Debug logging for serialized private key
+        private_key = config_dict.get("github_app_private_key")
+        if private_key:
+            logger.debug(
+                f"Serialized config: private_key type={type(private_key).__name__}, "
+                f"length={len(private_key) if isinstance(private_key, str) else 'N/A'}, "
+                f"has_literal_backslash_n={'\\n' in private_key if isinstance(private_key, str) else False}, "
+                f"has_real_newline={chr(10) in private_key if isinstance(private_key, str) else False}"
+            )
 
         # Enqueue task
         job = self.queue.enqueue(

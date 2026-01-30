@@ -238,6 +238,18 @@ def _build_config_from_dict(
     config_dict["github_repository"] = repository
     config_dict["github_app_installation_id"] = installation_id
 
+    # Debug logging for private key in config_dict
+    private_key = config_dict.get("github_app_private_key")
+    if private_key:
+        logger.debug(
+            f"_build_config_from_dict: private_key type={type(private_key).__name__}, "
+            f"length={len(private_key) if isinstance(private_key, str) else 'N/A'}, "
+            f"has_literal_backslash_n={'\\n' in private_key if isinstance(private_key, str) else False}, "
+            f"has_real_newline={chr(10) in private_key if isinstance(private_key, str) else False}"
+        )
+    else:
+        logger.debug("_build_config_from_dict: private_key is None or missing")
+
     # Create config
     config = AgentConfig(**config_dict)
 
