@@ -229,6 +229,13 @@ def process_issue(
         # Step 6: Validate changes
         print_info("Validating generated code...")
 
+        # Normalize file operations (auto-correct common LLM mistakes)
+        code_gen = code_modifier.normalize_file_operations(code_gen, repo_path_str)
+
+        # Update local variables after normalization
+        files_to_modify = code_gen.files_to_modify or {}
+        files_to_create = code_gen.files_to_create or {}
+
         # Validate file references
         is_valid, errors = code_modifier.validate_file_references(code_gen, repo_path_str)
         if not is_valid:
@@ -242,6 +249,8 @@ def process_issue(
 
         # Validate syntax and security
         validation_warnings = []
+        blocking_security_issues = []
+
         for file_path, content in all_changes.items():
             if file_path.endswith(".py"):
                 is_valid, error = code_modifier.validate_python_syntax(file_path, content)
@@ -253,7 +262,21 @@ def process_issue(
                     file_path, content
                 )
                 if not is_safe:
-                    validation_warnings.extend(security_issues)
+                    # Separate HIGH-level issues from warnings
+                    for issue in security_issues:
+                        if "[HIGH]" in issue:
+                            blocking_security_issues.append(issue)
+                        else:
+                            validation_warnings.append(issue)
+
+        # Block execution if HIGH-level security issues found
+        if blocking_security_issues:
+            print_error(f"❌ CRITICAL SECURITY ISSUES DETECTED ({len(blocking_security_issues)}):")
+            for issue in blocking_security_issues:
+                console.print(f"  - {issue}", style="bold red")
+            console.print("\n⚠️  Generated code contains dangerous patterns and will NOT be committed.", style="yellow")
+            console.print("The LLM attempted to create code with security vulnerabilities.", style="yellow")
+            sys.exit(1)
 
         if validation_warnings:
             print_info(f"Security warnings ({len(validation_warnings)}):")
@@ -311,21 +334,18 @@ def process_issue(
         # Step 11: Create or update PR
         print_info("Managing pull request...")
 
-        # Check if PR already exists for this issue
+        # Check if PR already exists for this branch
         existing_pr = None
         try:
-            # Try to find existing PR by searching for the issue number
-            # This is a simplified approach - you might want to store PR number in state
-            for pr_num in range(1, 100):  # Check recent PRs
-                try:
-                    pr = github_client.fetch_pull_request(pr_num)
-                    if pr.issue_number == issue_number and pr.state == "open":
-                        existing_pr = pr
-                        break
-                except Exception:
-                    continue
+            # Search for PR by branch name (much more efficient than iterating)
+            pulls = github_client.repo.get_pulls(state="open", head=f"{github_client.repo.owner.login}:{branch_name}")
+            for pr in pulls:
+                if pr.head.ref == branch_name:
+                    existing_pr = github_client.fetch_pull_request(pr.number)
+                    logger.info(f"Found existing PR #{pr.number} for branch {branch_name}")
+                    break
         except Exception as e:
-            logger.debug(f"Error searching for existing PR: {e}")
+            logger.debug(f"Error searching for existing PR by branch: {e}")
 
         if existing_pr:
             print_info(f"PR #{existing_pr.number} already exists, updating labels...")
@@ -569,6 +589,9 @@ def apply_feedback(
             )
             progress.update(task, completed=True)
 
+        # Normalize file operations (auto-correct common LLM mistakes)
+        code_gen = code_modifier.normalize_file_operations(code_gen, repo_path_str)
+
         files_to_modify = code_gen.files_to_modify or {}
         files_to_create = code_gen.files_to_create or {}
 
@@ -579,12 +602,37 @@ def apply_feedback(
         all_changes = {**files_to_modify, **files_to_create}
 
         print_info("Validating changes...")
+        blocking_security_issues = []
+        validation_warnings = []
+
         for file_path, content in all_changes.items():
             if file_path.endswith(".py"):
                 is_valid, error = code_modifier.validate_python_syntax(file_path, content)
                 if not is_valid:
                     print_error(f"Syntax validation failed: {error}")
                     sys.exit(1)
+
+                is_safe, security_issues = code_modifier.validate_generated_code_security(
+                    file_path, content
+                )
+                if not is_safe:
+                    for issue in security_issues:
+                        if "[HIGH]" in issue:
+                            blocking_security_issues.append(issue)
+                        else:
+                            validation_warnings.append(issue)
+
+        if blocking_security_issues:
+            print_error(f"❌ CRITICAL SECURITY ISSUES DETECTED ({len(blocking_security_issues)}):")
+            for issue in blocking_security_issues:
+                console.print(f"  - {issue}", style="bold red")
+            console.print("\n⚠️  Generated fix contains dangerous patterns and will NOT be applied.", style="yellow")
+            sys.exit(1)
+
+        if validation_warnings:
+            print_info(f"Security warnings ({len(validation_warnings)}):")
+            for warning in validation_warnings[:5]:
+                console.print(f"  - {warning}")
 
         print_success("Validation passed")
 

@@ -2,16 +2,14 @@
 
 import logging
 import os
+import py_compile
 import re
 import shutil
 import tempfile
-import py_compile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
 
 import git
-from git import Repo, GitCommandError
+from git import GitCommandError, Repo
 
 from src.common.models import CodeGeneration
 
@@ -34,13 +32,13 @@ class CodeModifier:
             "HIGH",
         ),
         "sql_injection": (
-            r"(?i)(execute|executemany|cursor\.execute)\s*\([^)]*%s[^)]*\)",
-            "Possible SQL injection vulnerability (string formatting in query)",
-            "MEDIUM",
+            r"(?i)(f[\"'].*SELECT|[\"'].*SELECT.*[\"']\.format\(|[\"'].*SELECT.*\+\s*\w+|SELECT.*%\s*[^s])",
+            "SQL injection: string interpolation in SQL query (f-strings, %, +, .format)",
+            "HIGH",
         ),
         "eval_usage": (
-            r"\beval\s*\(",
-            "Use of eval() detected - potential code injection risk",
+            r"(?i)(\beval\s*\(|__builtins__\s*\[\s*[\"']eval[\"']\s*\]|getattr\s*\(\s*__builtins__\s*,\s*[\"']eval[\"'])",
+            "Code injection: eval() or obfuscated eval detected",
             "HIGH",
         ),
         "exec_usage": (
@@ -49,19 +47,29 @@ class CodeModifier:
             "HIGH",
         ),
         "shell_true": (
-            r"subprocess\.\w+\([^)]*shell\s*=\s*True",
-            "subprocess with shell=True detected - potential command injection",
+            r"subprocess\.\w+\([^)]*shell\s*=\s*(True|\w+)(?!\s*#\s*safe)",
+            "Command injection: shell=True in subprocess (catches variables)",
             "HIGH",
         ),
         "pickle_usage": (
             r"import\s+pickle|from\s+pickle\s+import",
             "Use of pickle detected - potential code execution risk with untrusted data",
-            "MEDIUM",
+            "HIGH",
         ),
         "yaml_unsafe": (
             r"yaml\.load\([^)]*\)",
             "Unsafe yaml.load() usage - use yaml.safe_load() instead",
-            "MEDIUM",
+            "HIGH",
+        ),
+        "os_system": (
+            r"\bos\.system\s*\(",
+            "Command injection: os.system() detected",
+            "HIGH",
+        ),
+        "path_traversal": (
+            r"open\s*\([^)]*\.\./",
+            "Path traversal: ../ in file path",
+            "HIGH",
         ),
     }
 
@@ -78,16 +86,14 @@ class CodeModifier:
         try:
             self.repo = Repo(repo_path)
             logger.info(f"Initialized CodeModifier for repository: {repo_path}")
-        except git.InvalidGitRepositoryError:
-            raise ValueError(f"Path is not a valid git repository: {repo_path}")
+        except git.InvalidGitRepositoryError as e:
+            raise ValueError(f"Path is not a valid git repository: {repo_path}") from e
 
     # ============================================================================
     # Code Validation
     # ============================================================================
 
-    def validate_python_syntax(
-        self, file_path: str, content: str
-    ) -> Tuple[bool, Optional[str]]:
+    def validate_python_syntax(self, file_path: str, content: str) -> tuple[bool, str | None]:
         """Validate Python syntax by attempting to compile the code.
 
         Args:
@@ -115,8 +121,8 @@ class CodeModifier:
             logger.warning(error_msg)
             return False, error_msg
 
-        except Exception as e:
-            error_msg = f"Unexpected error during syntax validation for {file_path}: {str(e)}"
+        except Exception:
+            error_msg = f"Unexpected error during syntax validation for {file_path}"
             logger.error(error_msg)
             return False, error_msg
 
@@ -129,7 +135,7 @@ class CodeModifier:
 
     def validate_generated_code_security(
         self, file_path: str, content: str
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """Check generated code for common security issues.
 
         Args:
@@ -141,7 +147,7 @@ class CodeModifier:
         """
         issues = []
 
-        for pattern_name, (pattern, message, severity) in self.SECURITY_PATTERNS.items():
+        for _pattern_name, (pattern, message, severity) in self.SECURITY_PATTERNS.items():
             matches = re.finditer(pattern, content, re.MULTILINE)
             for match in matches:
                 # Calculate line number
@@ -168,15 +174,74 @@ class CodeModifier:
 
         return is_safe, issues
 
+    def normalize_file_operations(
+        self, generated_code: CodeGeneration, repo_path: str
+    ) -> CodeGeneration:
+        """Normalize file operations by auto-detecting which files should be created vs modified.
+
+        If a file in files_to_modify doesn't exist, move it to files_to_create.
+        If a file in files_to_create already exists, move it to files_to_modify.
+
+        Args:
+            generated_code: CodeGeneration model with file changes
+            repo_path: Path to repository root
+
+        Returns:
+            Normalized CodeGeneration with corrected file operations
+        """
+        repo_path_obj = Path(repo_path).resolve()
+
+        files_to_modify = dict(generated_code.files_to_modify or {})
+        files_to_create = dict(generated_code.files_to_create or {})
+
+        # Move non-existent files from modify to create
+        files_to_move_to_create = []
+        for file_path in list(files_to_modify.keys()):
+            full_path = (repo_path_obj / file_path).resolve()
+            if not full_path.exists():
+                files_to_move_to_create.append(file_path)
+                logger.info(
+                    f"Auto-correction: Moving '{file_path}' from files_to_modify to files_to_create (file doesn't exist)"
+                )
+
+        for file_path in files_to_move_to_create:
+            files_to_create[file_path] = files_to_modify.pop(file_path)
+
+        # Move existing files from create to modify
+        files_to_move_to_modify = []
+        for file_path in list(files_to_create.keys()):
+            full_path = (repo_path_obj / file_path).resolve()
+            if full_path.exists():
+                files_to_move_to_modify.append(file_path)
+                logger.info(
+                    f"Auto-correction: Moving '{file_path}' from files_to_create to files_to_modify (file already exists)"
+                )
+
+        for file_path in files_to_move_to_modify:
+            files_to_modify[file_path] = files_to_create.pop(file_path)
+
+        # Create new CodeGeneration with corrected file operations
+        normalized = CodeGeneration(
+            explanation=generated_code.explanation,
+            files_to_modify=files_to_modify if files_to_modify else None,
+            files_to_create=files_to_create if files_to_create else None,
+            dependencies_needed=generated_code.dependencies_needed,
+        )
+
+        return normalized
+
     def validate_file_references(
         self, generated_code: CodeGeneration, repo_path: str
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """Validate that file references in generated code are valid.
 
         Checks that:
         - Files to modify actually exist
         - Directories for new files exist or can be created
         - No attempts to modify files outside the repository
+
+        NOTE: Call normalize_file_operations() before this method to auto-correct
+        common issues like putting new files in files_to_modify.
 
         Args:
             generated_code: CodeGeneration model with file changes
@@ -191,15 +256,20 @@ class CodeModifier:
         # Check files to modify
         files_to_modify = generated_code.files_to_modify or {}
         for file_path in files_to_modify.keys():
-            full_path = (repo_path_obj / file_path).resolve()
+            file_path_obj = repo_path_obj / file_path
+
+            # Security check: detect symlinks before resolution
+            if file_path_obj.is_symlink():
+                errors.append(f"Security: Symlink detected: {file_path}")
+                continue
+
+            full_path = file_path_obj.resolve()
 
             # Security check: ensure file is within repository
             try:
                 full_path.relative_to(repo_path_obj)
             except ValueError:
-                errors.append(
-                    f"Security: File to modify is outside repository: {file_path}"
-                )
+                errors.append(f"Security: File to modify is outside repository: {file_path}")
                 continue
 
             # Check if file exists
@@ -209,22 +279,25 @@ class CodeModifier:
         # Check files to create
         files_to_create = generated_code.files_to_create or {}
         for file_path in files_to_create.keys():
-            full_path = (repo_path_obj / file_path).resolve()
+            file_path_obj = repo_path_obj / file_path
+
+            # Security check: detect symlinks before resolution
+            if file_path_obj.exists() and file_path_obj.is_symlink():
+                errors.append(f"Security: Symlink detected: {file_path}")
+                continue
+
+            full_path = file_path_obj.resolve()
 
             # Security check: ensure file is within repository
             try:
                 full_path.relative_to(repo_path_obj)
             except ValueError:
-                errors.append(
-                    f"Security: File to create is outside repository: {file_path}"
-                )
+                errors.append(f"Security: File to create is outside repository: {file_path}")
                 continue
 
             # Check if file already exists
             if full_path.exists():
-                errors.append(
-                    f"File to create already exists (use modify instead): {file_path}"
-                )
+                errors.append(f"File to create already exists (use modify instead): {file_path}")
                 continue
 
             # Check if parent directory exists or can be created
@@ -246,8 +319,8 @@ class CodeModifier:
     # ============================================================================
 
     def apply_changes_with_validation(
-        self, changes: Dict[str, str], repo_path: str
-    ) -> Tuple[bool, List[str]]:
+        self, changes: dict[str, str], repo_path: str
+    ) -> tuple[bool, list[str]]:
         """Apply code changes with validation and backup/rollback support.
 
         This method:
@@ -378,7 +451,7 @@ class CodeModifier:
             logger.error(f"Failed to create branch {branch_name}: {e}")
             raise
 
-    def create_commit(self, message: str, files: List[str]) -> str:
+    def create_commit(self, message: str, files: list[str]) -> str:
         """Create a git commit with specified files.
 
         Args:
@@ -435,7 +508,7 @@ class CodeModifier:
         issue_number: int,
         issue_title: str,
         iteration: int,
-        changes: Dict[str, str],
+        changes: dict[str, str],
     ) -> str:
         """Generate a descriptive commit message.
 
@@ -500,7 +573,7 @@ class CodeModifier:
         """
         return branch_name in [b.name for b in self.repo.branches]
 
-    def get_modified_files(self) -> List[str]:
+    def get_modified_files(self) -> list[str]:
         """Get list of modified files in working directory.
 
         Returns:
@@ -509,7 +582,7 @@ class CodeModifier:
         modified_files = [item.a_path for item in self.repo.index.diff(None)]
         return modified_files
 
-    def get_staged_files(self) -> List[str]:
+    def get_staged_files(self) -> list[str]:
         """Get list of staged files.
 
         Returns:
