@@ -51,7 +51,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run uvicorn
-CMD ["uvicorn", "src.webhook_server.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["python", "-m", "uvicorn", "src.webhook_server.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
 
 # ========== Worker Stage ==========
 FROM base AS worker
@@ -71,5 +71,5 @@ RUN mkdir -p /tmp/repos
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "from redis import Redis; import os; Redis.from_url(os.getenv('REDIS_URL')).ping()" || exit 1
 
-# Run RQ worker
-CMD ["rq", "worker", "agent-tasks", "--url", "$REDIS_URL", "--name", "$HOSTNAME", "--with-scheduler"]
+# Run RQ worker (using shell form for env var substitution)
+CMD python -m rq worker agent-tasks --url $REDIS_URL --name $HOSTNAME --with-scheduler
