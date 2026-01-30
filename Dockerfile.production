@@ -26,8 +26,8 @@ FROM base AS builder
 # Copy dependency files
 COPY pyproject.toml uv.lock README.md ./
 
-# Install dependencies (production only)
-RUN uv sync --frozen --no-dev
+# Install dependencies (all, including web server and workers)
+RUN uv sync --frozen
 
 # Copy source code
 COPY src/ ./src/
