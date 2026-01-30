@@ -711,7 +711,7 @@ def init(
         try:
             github_client = GitHubClient(config)
             # Try to fetch repo info
-            repo_info = github_client.repo.get_repo(config.github_repository)
+            repo_info = github_client.repo
             print_success(f"GitHub: Connected to {config.github_repository}")
             print_success(f"Repository: {repo_info.name} ({repo_info.default_branch})")
         except Exception as e:
