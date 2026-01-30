@@ -78,7 +78,7 @@ runs:
       shell: bash
       working-directory: .coding-agents
       run: |
-        uv sync --frozen
+        uv sync
 
     - name: Configure Git
       shell: bash
