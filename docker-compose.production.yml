@@ -63,6 +63,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
 
   rq-dashboard:
     image: eoranged/rq-dashboard:latest

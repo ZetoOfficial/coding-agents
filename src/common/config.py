@@ -1,10 +1,10 @@
 """Configuration management with pydantic and environment variable loading."""
 
-import os
-import re
 import logging
-from typing import Optional, Literal
-from pydantic import SecretStr, field_validator, model_validator, Field
+import re
+from typing import Literal, Optional
+
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -153,6 +153,17 @@ class AgentConfig(BaseSettings):
             raise ValueError(
                 "github_repository must be in format 'owner/repo'"
             )
+        return v
+
+    @field_validator("github_app_private_key", mode="before")
+    @classmethod
+    def validate_github_app_private_key(cls, v: Optional[str]) -> Optional[str]:
+        """Normalize GitHub App private key - replace literal \\n with actual newlines."""
+        if v is None:
+            return v
+        # If the key contains literal \n (as two characters), replace with actual newlines
+        if isinstance(v, str) and "\\n" in v:
+            v = v.replace("\\n", "\n")
         return v
 
     def __repr__(self) -> str:

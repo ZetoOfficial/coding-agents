@@ -51,6 +51,7 @@ dmypy.json
 .env
 .env.local
 .env.*.local
+.env.production
 
 # Agent state
 .agent-state/
