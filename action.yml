@@ -1,0 +1,129 @@
+name: 'Coding Agents - AI SDLC Automation'
+description: 'Автоматическая реализация GitHub Issues и ревью PR с помощью AI'
+author: 'ZetoOfficial'
+
+branding:
+  icon: 'cpu'
+  color: 'blue'
+
+inputs:
+  mode:
+    description: 'Режим работы: process-issue, review-pr, apply-feedback'
+    required: true
+  issue-number:
+    description: 'Номер Issue для обработки (для mode=process-issue)'
+    required: false
+  pr-number:
+    description: 'Номер PR для ревью (для mode=review-pr или apply-feedback)'
+    required: false
+  github-token:
+    description: 'GitHub token для API операций'
+    required: true
+    default: ${{ github.token }}
+  openai-api-key:
+    description: 'OpenAI API key'
+    required: false
+  yandex-api-key:
+    description: 'YandexGPT API key'
+    required: false
+  yandex-folder-id:
+    description: 'Yandex Cloud folder ID'
+    required: false
+  llm-provider:
+    description: 'LLM провайдер: openai или yandex'
+    required: false
+    default: 'openai'
+  max-iterations:
+    description: 'Максимальное количество итераций'
+    required: false
+    default: '5'
+  artifact-dir:
+    description: 'Директория с CI артефактами (для mode=review-pr)'
+    required: false
+    default: './ci-reports'
+
+outputs:
+  pr-number:
+    description: 'Номер созданного PR (для process-issue)'
+    value: ${{ steps.agent.outputs.pr-number }}
+  review-status:
+    description: 'Статус ревью: approved или changes-requested (для review-pr)'
+    value: ${{ steps.agent.outputs.review-status }}
+  iteration:
+    description: 'Текущая итерация'
+    value: ${{ steps.agent.outputs.iteration }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      shell: bash
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Checkout agent code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.action_repository }}
+        ref: ${{ github.action_ref }}
+        path: .coding-agents
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: .coding-agents
+      run: |
+        uv sync --frozen
+
+    - name: Configure Git
+      shell: bash
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Run agent
+      id: agent
+      shell: bash
+      working-directory: .coding-agents
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        YANDEX_API_KEY: ${{ inputs.yandex-api-key }}
+        YANDEX_FOLDER_ID: ${{ inputs.yandex-folder-id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        LLM_PROVIDER: ${{ inputs.llm-provider }}
+        MAX_ITERATIONS: ${{ inputs.max-iterations }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        case "${{ inputs.mode }}" in
+          process-issue)
+            uv run python -m src.code_agent.cli process-issue \
+              --issue-number ${{ inputs.issue-number }}
+            ;;
+          review-pr)
+            uv run python -m src.reviewer_agent.reviewer review \
+              --pr-number ${{ inputs.pr-number }} \
+              --artifact-dir ${{ inputs.artifact-dir }} \
+              --output review-output.json \
+              --post-review
+            ;;
+          apply-feedback)
+            uv run python -m src.code_agent.cli apply-feedback \
+              --pr-number ${{ inputs.pr-number }}
+            ;;
+          *)
+            echo "Unknown mode: ${{ inputs.mode }}"
+            exit 1
+            ;;
+        esac
+
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: |
+        rm -rf .coding-agents
