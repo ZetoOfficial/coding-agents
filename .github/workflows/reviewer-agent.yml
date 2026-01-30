@@ -172,14 +172,22 @@ jobs:
           if [ -f review-output.json ]; then
             echo "## AI Review Results" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            python3 -c "import json
-with open('review-output.json') as f:
-    review = json.load(f)
-print(f\"**Status:** {'✅ Approved' if review['approve'] else '⚠️ Changes Requested'}\")
-print(f\"**Quality Score:** {review['overall_quality_score']}/10\")
-print(f\"**Blocking Issues:** {len(review['blocking_issues'])}\")
-print(f\"**Non-blocking Issues:** {len(review['non_blocking_issues'])}\")
-" >> $GITHUB_STEP_SUMMARY
+
+            approve=$(jq -r '.approve' review-output.json)
+            quality=$(jq -r '.overall_quality_score' review-output.json)
+            blocking=$(jq -r '.blocking_issues | length' review-output.json)
+            non_blocking=$(jq -r '.non_blocking_issues | length' review-output.json)
+
+            if [ "$approve" = "true" ]; then
+              status="от меня ок"
+            else
+              status="поправь моменты выше"
+            fi
+
+            echo "**Status:** $status" >> $GITHUB_STEP_SUMMARY
+            echo "**Quality Score:** $quality/10" >> $GITHUB_STEP_SUMMARY
+            echo "**Blocking Issues:** $blocking" >> $GITHUB_STEP_SUMMARY
+            echo "**Non-blocking Issues:** $non_blocking" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload review artifact
