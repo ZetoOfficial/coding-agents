@@ -1,11 +1,11 @@
 """GitHub webhook handler with signature verification."""
 
-import hmac
 import hashlib
+import hmac
 import logging
-from typing import Optional, Dict, Any
+from typing import Any, Optional
 
-from fastapi import Request, HTTPException, Header
+from fastapi import HTTPException, Request
 
 from src.common.config import AgentConfig
 
@@ -81,8 +81,8 @@ class WebhookHandler:
     def parse_event(
         self,
         event_type: Optional[str],
-        payload: Dict[str, Any]
-    ) -> tuple[str, Dict[str, Any]]:
+        payload: dict[str, Any]
+    ) -> tuple[str, dict[str, Any]]:
         """Parse webhook event and extract relevant information.
 
         Args:
@@ -124,16 +124,12 @@ class WebhookHandler:
 
 
 async def get_webhook_payload(
-    request: Request,
-    x_hub_signature_256: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
-    x_github_event: Optional[str] = Header(None, alias="X-GitHub-Event")
-) -> tuple[str, Dict[str, Any], bytes]:
+    request: Request
+) -> tuple[str, dict[str, Any], bytes]:
     """Extract and verify webhook payload from request.
 
     Args:
         request: FastAPI request object
-        x_hub_signature_256: GitHub signature header
-        x_github_event: GitHub event type header
 
     Returns:
         Tuple of (event_type, payload_dict, raw_body)
@@ -141,6 +137,9 @@ async def get_webhook_payload(
     Raises:
         HTTPException: If verification fails or payload is invalid
     """
+    # Extract headers directly from request
+    x_github_event = request.headers.get("X-GitHub-Event")
+
     # Read raw body for signature verification
     raw_body = await request.body()
 
