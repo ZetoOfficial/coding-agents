@@ -1,0 +1,153 @@
+name: Feedback Loop - Apply Review Changes
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  apply-feedback:
+    # Only run when bot requests changes
+    if: |
+      github.event.review.state == 'changes_requested' &&
+      github.event.review.user.type == 'Bot'
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Check iteration limit
+        id: check-limit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            const iterLabels = labels.filter(l => l.startsWith('agent:iteration-'));
+
+            if (iterLabels.length === 0) {
+              core.setOutput('should_continue', 'true');
+              core.setOutput('iteration', '1');
+              return;
+            }
+
+            const currentIter = Math.max(...iterLabels.map(l =>
+              parseInt(l.replace('agent:iteration-', ''))
+            ));
+
+            const maxIterations = parseInt(process.env.MAX_ITERATIONS || '5');
+
+            if (currentIter >= maxIterations) {
+              core.setOutput('should_continue', 'false');
+              core.setOutput('iteration', currentIter.toString());
+
+              // Post max iteration comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⚠️ **Maximum iteration limit (${maxIterations}) reached.**\n\n` +
+                      `The Code Agent has attempted ${maxIterations} iterations without success.\n` +
+                      `Manual intervention is required. Please review the PR and issue.\n\n` +
+                      `**Next steps:**\n` +
+                      `1. Review the PR changes and feedback history\n` +
+                      `2. Manually address any remaining issues\n` +
+                      `3. Remove the \`agent:max-iterations\` label to allow the agent to resume`
+              });
+
+              // Update labels
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['agent:max-iterations', 'agent:failed']
+              });
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: 'agent:in-progress'
+                });
+              } catch (e) {
+                // Label might not exist
+              }
+            } else {
+              core.setOutput('should_continue', 'true');
+              core.setOutput('iteration', (currentIter + 1).toString());
+            }
+
+      - name: Checkout PR branch
+        if: steps.check-limit.outputs.should_continue == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        if: steps.check-limit.outputs.should_continue == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        if: steps.check-limit.outputs.should_continue == 'true'
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        if: steps.check-limit.outputs.should_continue == 'true'
+        run: |
+          uv sync --frozen
+
+      - name: Configure Git
+        if: steps.check-limit.outputs.should_continue == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply feedback and update PR
+        if: steps.check-limit.outputs.should_continue == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'openai' }}
+        run: |
+          uv run python -m src.code_agent.cli apply-feedback \
+            --pr-number ${{ github.event.pull_request.number }} \
+            --iteration ${{ steps.check-limit.outputs.iteration }}
+
+      - name: Upload state artifact
+        if: always() && steps.check-limit.outputs.should_continue == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-state-pr-${{ github.event.pull_request.number }}-iter-${{ steps.check-limit.outputs.iteration }}
+          path: .agent-state/
+          retention-days: 30
+
+      - name: Comment on failure
+        if: failure() && steps.check-limit.outputs.should_continue == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `❌ Code Agent failed to apply feedback. Check the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`
+            });
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['agent:failed']
+            });

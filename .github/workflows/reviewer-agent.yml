@@ -1,0 +1,192 @@
+name: CI and AI Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, master]
+
+jobs:
+  # Job 1: Quality checks (lint, type, format)
+  quality-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --group dev
+
+      - name: Run ruff (linting)
+        id: ruff
+        run: |
+          mkdir -p ci-reports
+          uv run ruff check src/ --output-format=json > ci-reports/ruff-report.json || true
+          uv run ruff check src/ --output-format=github || true
+        continue-on-error: true
+
+      - name: Run black (formatting check)
+        id: black
+        run: |
+          uv run black --check --diff src/ | tee ci-reports/black-report.txt || true
+        continue-on-error: true
+
+      - name: Run mypy (type checking)
+        id: mypy
+        run: |
+          uv run mypy src/ --no-error-summary > ci-reports/mypy-report.json || true
+        continue-on-error: true
+
+      - name: Upload quality reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: ci-reports/
+
+  # Job 2: Tests and security
+  test-and-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --group dev
+
+      - name: Run pytest
+        id: pytest
+        run: |
+          mkdir -p ci-reports
+          uv run pytest tests/ -v \
+            --cov=src \
+            --cov-report=json:ci-reports/coverage.json \
+            --cov-report=term \
+            --json-report --json-report-file=ci-reports/pytest-report.json || true
+        continue-on-error: true
+
+      - name: Run bandit (security)
+        id: bandit
+        run: |
+          uv run bandit -r src/ -f json -o ci-reports/bandit-report.json || true
+        continue-on-error: true
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        id: pip-audit
+        run: |
+          uv run pip-audit --format=json --output=ci-reports/pip-audit-report.json || true
+        continue-on-error: true
+
+      - name: Upload test and security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-security-reports
+          path: ci-reports/
+
+  # Job 3: AI Reviewer analyzes everything
+  ai-review:
+    needs: [quality-checks, test-and-security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write  # Post reviews and comments
+      issues: read          # Read linked issue
+
+    # Only run on PRs from same repo (not forks)
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Download quality reports
+        uses: actions/download-artifact@v4
+        with:
+          name: quality-reports
+          path: ./ci-reports/
+
+      - name: Download test/security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: test-security-reports
+          path: ./ci-reports/
+
+      - name: Run AI Reviewer
+        id: review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'openai' }}
+        run: |
+          uv run python -m src.reviewer_agent.reviewer review \
+            --pr-number ${{ github.event.pull_request.number }} \
+            --artifact-dir ./ci-reports/ \
+            --output review-output.json \
+            --post-review
+
+      - name: Write to GitHub Step Summary
+        if: always()
+        run: |
+          if [ -f review-output.json ]; then
+            echo "## AI Review Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+              import json
+              with open('review-output.json') as f:
+                  review = json.load(f)
+              print(f\"**Status:** {'✅ Approved' if review['approve'] else '⚠️ Changes Requested'}\")
+              print(f\"**Quality Score:** {review['overall_quality_score']}/10\")
+              print(f\"**Blocking Issues:** {len(review['blocking_issues'])}\")
+              print(f\"**Non-blocking Issues:** {len(review['non_blocking_issues'])}\")
+            " >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-output
+          path: review-output.json
+          retention-days: 30

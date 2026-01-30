@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Service 1: Interactive CLI for local development/testing
+  agent-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: coding-agents-dev
+    env_file: .env
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - YANDEX_API_KEY=${YANDEX_API_KEY}
+      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-5}
+      - DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./src:/app/src:ro          # Mount source code (read-only for safety)
+      - ./logs:/app/logs            # Persistent logs
+      - agent-state:/app/.agent-state  # Persistent state
+    working_dir: /app
+    command: ["--help"]  # Show help by default
+    networks:
+      - agent-network
+    stdin_open: true
+    tty: true
+
+  # Service 2: Reviewer agent for local testing
+  reviewer-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: coding-agents-reviewer
+    env_file: .env
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - YANDEX_API_KEY=${YANDEX_API_KEY}
+      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./src:/app/src:ro
+      - ./logs:/app/logs
+      - ./ci-reports:/app/ci-reports:ro  # Mount CI reports for review
+    entrypoint: ["uv", "run", "python", "-m", "src.reviewer_agent.reviewer"]
+    command: ["--help"]
+    networks:
+      - agent-network
+    stdin_open: true
+    tty: true
+
+volumes:
+  agent-state:
+    driver: local
+
+networks:
+  agent-network:
+    driver: bridge
