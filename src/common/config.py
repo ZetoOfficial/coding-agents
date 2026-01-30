@@ -170,6 +170,9 @@ def setup_logging(config: AgentConfig) -> None:
     for handler in logging.root.handlers:
         handler.addFilter(secret_filter)
 
+    # Disable httpx logging to avoid formatting errors
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def load_config() -> AgentConfig:
     """Load and validate configuration from environment."""

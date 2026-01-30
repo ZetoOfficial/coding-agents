@@ -343,9 +343,8 @@ def post_review_idempotent(
         github_client.dismiss_old_bot_reviews(pr_number)
 
         # Determine review event
-        if review.approve:
-            event = "APPROVE"
-        elif review.blocking_issues:
+        # Note: GitHub Actions bots cannot APPROVE PRs, so we use COMMENT instead
+        if review.blocking_issues:
             event = "REQUEST_CHANGES"
         else:
             event = "COMMENT"
