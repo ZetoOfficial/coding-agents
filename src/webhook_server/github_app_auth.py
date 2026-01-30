@@ -1,7 +1,7 @@
 """GitHub App authentication - JWT generation and installation token management."""
 
-import time
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 

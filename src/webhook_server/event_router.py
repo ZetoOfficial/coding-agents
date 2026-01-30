@@ -1,18 +1,18 @@
 """Route webhook events to appropriate tasks."""
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 from redis import Redis
 from rq import Queue
 
 from src.common.config import AgentConfig
 from src.webhook_server.models import (
-    IssuesEventPayload,
     IssueCommentEventPayload,
+    IssuesEventPayload,
     PullRequestEventPayload,
     PullRequestReviewEventPayload,
-    WebhookResponse
+    WebhookResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class EventRouter:
     def route_event(
         self,
         event_type: str,
-        payload: Dict[str, Any]
+        payload: dict[str, Any]
     ) -> WebhookResponse:
         """Route event to appropriate handler.
 
@@ -62,7 +62,7 @@ class EventRouter:
                 message=f"Unsupported event type: {event_type}"
             )
 
-    def _handle_ping(self, payload: Dict[str, Any]) -> WebhookResponse:
+    def _handle_ping(self, payload: dict[str, Any]) -> WebhookResponse:
         """Handle ping event (webhook test).
 
         Args:
@@ -78,7 +78,7 @@ class EventRouter:
             details={"zen": payload.get("zen")}
         )
 
-    def _handle_issues_event(self, payload_dict: Dict[str, Any]) -> WebhookResponse:
+    def _handle_issues_event(self, payload_dict: dict[str, Any]) -> WebhookResponse:
         """Handle issues event.
 
         Triggers code agent when issue is labeled with 'agent:implement'.
@@ -109,7 +109,7 @@ class EventRouter:
 
     def _handle_issue_comment_event(
         self,
-        payload_dict: Dict[str, Any]
+        payload_dict: dict[str, Any]
     ) -> WebhookResponse:
         """Handle issue comment event.
 
@@ -148,7 +148,7 @@ class EventRouter:
 
     def _handle_pull_request_event(
         self,
-        payload_dict: Dict[str, Any]
+        payload_dict: dict[str, Any]
     ) -> WebhookResponse:
         """Handle pull request event.
 
@@ -183,7 +183,7 @@ class EventRouter:
 
     def _handle_pull_request_review_event(
         self,
-        payload_dict: Dict[str, Any]
+        payload_dict: dict[str, Any]
     ) -> WebhookResponse:
         """Handle pull request review event.
 
@@ -236,11 +236,14 @@ class EventRouter:
         # Debug logging for serialized private key
         private_key = config_dict.get("github_app_private_key")
         if private_key:
+            literal_newline = "\\n"
+            has_literal = isinstance(private_key, str) and literal_newline in private_key
+            has_real = isinstance(private_key, str) and chr(10) in private_key
             logger.debug(
                 f"Serialized config: private_key type={type(private_key).__name__}, "
                 f"length={len(private_key) if isinstance(private_key, str) else 'N/A'}, "
-                f"has_literal_backslash_n={'\\n' in private_key if isinstance(private_key, str) else False}, "
-                f"has_real_newline={chr(10) in private_key if isinstance(private_key, str) else False}"
+                f"has_literal_backslash_n={has_literal}, "
+                f"has_real_newline={has_real}"
             )
 
         # Enqueue task
@@ -296,11 +299,14 @@ class EventRouter:
         # Debug logging for serialized private key
         private_key = config_dict.get("github_app_private_key")
         if private_key:
+            literal_newline = "\\n"
+            has_literal = isinstance(private_key, str) and literal_newline in private_key
+            has_real = isinstance(private_key, str) and chr(10) in private_key
             logger.debug(
                 f"Serialized config: private_key type={type(private_key).__name__}, "
                 f"length={len(private_key) if isinstance(private_key, str) else 'N/A'}, "
-                f"has_literal_backslash_n={'\\n' in private_key if isinstance(private_key, str) else False}, "
-                f"has_real_newline={chr(10) in private_key if isinstance(private_key, str) else False}"
+                f"has_literal_backslash_n={has_literal}, "
+                f"has_real_newline={has_real}"
             )
 
         # Enqueue task

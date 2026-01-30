@@ -165,25 +165,31 @@ class AgentConfig(BaseSettings):
             logger.debug("Private key validator: value is None")
             return v
 
+        # Check for literal \n (two characters: backslash + n)
+        literal_newline = "\\n"
+        has_literal = isinstance(v, str) and literal_newline in v
+        has_real = isinstance(v, str) and chr(10) in v
+
         # Log input value details
+        value_preview = repr(v[:50]) if isinstance(v, str) and len(v) > 50 else repr(v[:20]) if isinstance(v, str) else 'N/A'
         logger.debug(
             f"Private key validator input: type={type(v).__name__}, "
             f"length={len(v) if isinstance(v, str) else 'N/A'}, "
-            f"has_literal_backslash_n={'\\n' in v if isinstance(v, str) else False}, "
-            f"has_real_newline={chr(10) in v if isinstance(v, str) else False}, "
-            f"starts_with={repr(v[:50]) if isinstance(v, str) and len(v) > 50 else repr(v[:20]) if isinstance(v, str) else 'N/A'}"
+            f"has_literal_backslash_n={has_literal}, "
+            f"has_real_newline={has_real}, "
+            f"starts_with={value_preview}"
         )
 
         # If the key contains literal \n (as two characters), replace with actual newlines
-        if isinstance(v, str) and "\\n" in v:
-            logger.debug("Converting literal \\n to actual newlines")
-            v = v.replace("\\n", "\n")
+        if has_literal:
+            logger.debug("Converting literal backslash-n to actual newlines")
+            v = v.replace(literal_newline, "\n")
             logger.debug(
                 f"After conversion: has_real_newline={chr(10) in v}, "
                 f"starts_with={repr(v[:50])}"
             )
         else:
-            logger.debug("No conversion needed (no literal \\n found)")
+            logger.debug("No conversion needed (no literal backslash-n found)")
 
         return v
 

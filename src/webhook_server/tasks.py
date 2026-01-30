@@ -3,10 +3,9 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 from rq import get_current_job
-from rq.job import Job
 
 from src.common.config import AgentConfig
 from src.webhook_server.github_app_auth import GitHubAppAuth
@@ -18,9 +17,9 @@ def process_issue_task(
     issue_number: int,
     repository: str,
     installation_id: int,
-    config_dict: Dict[str, Any],
+    config_dict: dict[str, Any],
     force: bool = False
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """RQ task for processing GitHub issues.
 
     Args:
@@ -85,8 +84,8 @@ def apply_feedback_task(
     pr_number: int,
     repository: str,
     installation_id: int,
-    config_dict: Dict[str, Any]
-) -> Dict[str, Any]:
+    config_dict: dict[str, Any]
+) -> dict[str, Any]:
     """RQ task for applying reviewer feedback to PRs.
 
     Args:
@@ -149,9 +148,9 @@ def review_pr_task(
     pr_number: int,
     repository: str,
     installation_id: int,
-    config_dict: Dict[str, Any],
+    config_dict: dict[str, Any],
     artifacts_url: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """RQ task for AI-powered PR review.
 
     Args:
@@ -220,7 +219,7 @@ def review_pr_task(
 
 
 def _build_config_from_dict(
-    config_dict: Dict[str, Any],
+    config_dict: dict[str, Any],
     repository: str,
     installation_id: int
 ) -> AgentConfig:
@@ -241,11 +240,14 @@ def _build_config_from_dict(
     # Debug logging for private key in config_dict
     private_key = config_dict.get("github_app_private_key")
     if private_key:
+        literal_newline = "\\n"
+        has_literal = isinstance(private_key, str) and literal_newline in private_key
+        has_real = isinstance(private_key, str) and chr(10) in private_key
         logger.debug(
             f"_build_config_from_dict: private_key type={type(private_key).__name__}, "
             f"length={len(private_key) if isinstance(private_key, str) else 'N/A'}, "
-            f"has_literal_backslash_n={'\\n' in private_key if isinstance(private_key, str) else False}, "
-            f"has_real_newline={chr(10) in private_key if isinstance(private_key, str) else False}"
+            f"has_literal_backslash_n={has_literal}, "
+            f"has_real_newline={has_real}"
         )
     else:
         logger.debug("_build_config_from_dict: private_key is None or missing")
