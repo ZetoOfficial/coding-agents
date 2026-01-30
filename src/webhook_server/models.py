@@ -2,11 +2,13 @@
 
 from typing import Optional, Dict, Any, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class WebhookUser(BaseModel):
     """GitHub user in webhook payload."""
+
+    model_config = ConfigDict(extra='ignore')
 
     login: str
     id: int
@@ -15,6 +17,8 @@ class WebhookUser(BaseModel):
 
 class WebhookRepository(BaseModel):
     """GitHub repository in webhook payload."""
+
+    model_config = ConfigDict(extra='ignore')
 
     id: int
     name: str
@@ -26,6 +30,8 @@ class WebhookRepository(BaseModel):
 
 class WebhookIssue(BaseModel):
     """GitHub issue in webhook payload."""
+
+    model_config = ConfigDict(extra='ignore')
 
     id: int
     number: int
@@ -40,6 +46,8 @@ class WebhookIssue(BaseModel):
 
 class WebhookPullRequest(BaseModel):
     """GitHub pull request in webhook payload."""
+
+    model_config = ConfigDict(extra='ignore')
 
     id: int
     number: int
@@ -58,6 +66,8 @@ class WebhookPullRequest(BaseModel):
 class WebhookComment(BaseModel):
     """GitHub comment in webhook payload."""
 
+    model_config = ConfigDict(extra='ignore')
+
     id: int
     body: str
     user: WebhookUser
@@ -66,6 +76,8 @@ class WebhookComment(BaseModel):
 
 class WebhookReview(BaseModel):
     """GitHub PR review in webhook payload."""
+
+    model_config = ConfigDict(extra='ignore')
 
     id: int
     user: WebhookUser
@@ -76,6 +88,8 @@ class WebhookReview(BaseModel):
 
 class IssuesEventPayload(BaseModel):
     """Payload for issues webhook events."""
+
+    model_config = ConfigDict(extra='ignore')
 
     action: Literal["opened", "edited", "closed", "reopened", "labeled", "unlabeled"]
     issue: WebhookIssue
@@ -88,6 +102,8 @@ class IssuesEventPayload(BaseModel):
 class IssueCommentEventPayload(BaseModel):
     """Payload for issue_comment webhook events."""
 
+    model_config = ConfigDict(extra='ignore')
+
     action: Literal["created", "edited", "deleted"]
     issue: WebhookIssue
     comment: WebhookComment
@@ -98,6 +114,8 @@ class IssueCommentEventPayload(BaseModel):
 
 class PullRequestEventPayload(BaseModel):
     """Payload for pull_request webhook events."""
+
+    model_config = ConfigDict(extra='ignore')
 
     action: Literal["opened", "edited", "closed", "reopened", "synchronize"]
     number: int
@@ -110,6 +128,8 @@ class PullRequestEventPayload(BaseModel):
 class PullRequestReviewEventPayload(BaseModel):
     """Payload for pull_request_review webhook events."""
 
+    model_config = ConfigDict(extra='ignore')
+
     action: Literal["submitted", "edited", "dismissed"]
     review: WebhookReview
     pull_request: WebhookPullRequest
@@ -121,6 +141,8 @@ class PullRequestReviewEventPayload(BaseModel):
 class PingEventPayload(BaseModel):
     """Payload for ping webhook events (sent when webhook is created)."""
 
+    model_config = ConfigDict(extra='ignore')
+
     zen: str
     hook_id: int
     hook: Dict[str, Any]
@@ -131,6 +153,8 @@ class PingEventPayload(BaseModel):
 class CICompletePayload(BaseModel):
     """Custom payload for CI completion notification."""
 
+    model_config = ConfigDict(extra='ignore')
+
     pr_number: int
     repository: str
     artifacts_url: str
@@ -138,6 +162,8 @@ class CICompletePayload(BaseModel):
 
 class WebhookResponse(BaseModel):
     """Standard webhook response."""
+
+    model_config = ConfigDict(extra='ignore')
 
     success: bool
     message: str
@@ -147,6 +173,8 @@ class WebhookResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response."""
+
+    model_config = ConfigDict(extra='ignore')
 
     status: Literal["healthy", "unhealthy"]
     timestamp: datetime
