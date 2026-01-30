@@ -98,24 +98,28 @@ runs:
         LLM_PROVIDER: ${{ inputs.llm-provider }}
         MAX_ITERATIONS: ${{ inputs.max-iterations }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        PYTHONPATH: ${{ github.workspace }}/.coding-agents
       run: |
         cd ${{ github.workspace }}
 
+        export PYTHONPATH="${{ github.workspace }}/.coding-agents:$PYTHONPATH"
+
         case "${{ inputs.mode }}" in
           process-issue)
-            .coding-agents/.venv/bin/python -m src.code_agent.cli process-issue \
+            cd .coding-agents
+            uv run python -m src.code_agent.cli process-issue \
               --issue-number ${{ inputs.issue-number }}
             ;;
           review-pr)
-            .coding-agents/.venv/bin/python -m src.reviewer_agent.reviewer review \
+            cd .coding-agents
+            uv run python -m src.reviewer_agent.reviewer review \
               --pr-number ${{ inputs.pr-number }} \
-              --artifact-dir ${{ inputs.artifact-dir }} \
-              --output review-output.json \
+              --artifact-dir ${{ github.workspace }}/${{ inputs.artifact-dir }} \
+              --output ${{ github.workspace }}/review-output.json \
               --post-review
             ;;
           apply-feedback)
-            .coding-agents/.venv/bin/python -m src.code_agent.cli apply-feedback \
+            cd .coding-agents
+            uv run python -m src.code_agent.cli apply-feedback \
               --pr-number ${{ inputs.pr-number }}
             ;;
           *)
